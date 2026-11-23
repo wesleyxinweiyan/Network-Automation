@@ -1,0 +1,30 @@
+---
+- name: Check Cisco switches
+  hosts: ios
+  gather_facts: false
+
+  tasks:
+    - name: collection switch fact
+      cisco.ios.ios_facts:
+      when: ansible_network_os == 'cisco.ios.ios'
+    
+    - name: wirte switch fact to local
+      copy:
+        content: |
+          #jinja2: lstrip_blocks: True
+          ios device info:
+            {% for hostname in groups['ios']%}
+            Hostname: {{hostvars[hostname].ansible_net_hostname}}
+            Version: {{hostvars[hostname].ansible_net_version}}
+            Model: {{hostvars[hostname].ansible_net_model}}
+            Serial: {{hostvars[hostname].ansible_net_serialnum}}
+            {% endfor %}
+        dest: /Users/wesley/AI-Ops/network-automatically/swtich-profile-{{now(fmt='%Y%m%d_%H%M%S')}}
+      run_once: true
+
+    - name: backup switchs run-config
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: /Users/wesley/AI-Ops/network-automatically/backup/{{inventory_hostname}}_backup
+          filename: "{{inventory_hostname}}-{{now(fmt='%Y%m%d_%H%M%S')}}.cfg"

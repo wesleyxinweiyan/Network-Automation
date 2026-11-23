@@ -1,0 +1,71 @@
+---
+- name: Precheck before upgrade
+  hosts: ios
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../../var/ios_upgrade.yml"
+  tasks:
+    ### garthering facts for getting some parameters and showing information on the console
+    - name: Grathering fact for {{ inventory_hostname }}
+      cisco.ios.ios_facts:
+        gather_subset:
+          - min
+          - hardware
+
+    - name: Get running config before upgrade
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: ./backup/{{inventory_hostname}}_backup
+          filename: "{{inventory_hostname}}_beforeupgrade.cfg"
+
+    - name: Collect network state before upgrade
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/cisco_state_collection.yml"
+
+
+    - name: Save all network state as JSON
+      ansible.builtin.copy:
+        content: "{{ network_state | to_nice_json }}"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_beforeupgrade_state.json"
+        mode: '0600'
+      delegate_to: localhost
+
+
+    - name: Set free disk variable
+      ansible.builtin.set_fact:
+        free_disk: "{{ ansible_net_filesystems_info['flash:']['spacefree_kb'] | int }}"
+
+    - name: Basic fact for {{ inventory_hostname }}
+      ansible.builtin.debug:
+        msg:
+          - "Device Model: {{ ansible_net_model }}"
+          - "Serial Number: {{ ansible_net_serialnum }}"
+          - "IOS-XE Version: {{ ansible_net_version }}"
+          - "IOS-XE Image: {{ ansible_net_image }}"
+          - "Free Memory (MB): {{ ansible_net_memfree_mb }}"
+          - "Total Memory (MB): {{ ansible_net_memtotal_mb }}"
+          - "Free Disk Space (KB): {{ ansible_net_filesystems_info['flash:']['spacefree_kb'] }}"
+          - "Total Disk Space (KB): {{ ansible_net_filesystems_info['flash:']['spacetotal_kb'] }}"
+
+    ### check whether the image need to upgrade
+    - name: Set upgrade decision for {{ inventory_hostname }}
+      ansible.builtin.set_fact:
+        upgrade_needed: "{{ ansible_net_version != target_ios_ver }}"
+
+    - name: Display upgrade decision
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} -
+          {{ 'NEEDS UPGRADE' if upgrade_needed else 'SKIP: Already running target version' }}
+    
+    # ### check whether there is enough space on the disk
+    # - name: Check if {{ inventory_hostname }} has available disk space
+    #   ansible.builtin.assert:
+    #     that:
+    #       - (free_disk | int) * 1024 >= (target_image_size | int)
+    #     success_msg: "{{ inventory_hostname }} - PASS: Flash space is sufficient for the image file"
+    #     fail_msg: "{{ inventory_hostname }} - FAIL: Flash space is insufficient"
+    #   when: upgrade_needed | bool
+

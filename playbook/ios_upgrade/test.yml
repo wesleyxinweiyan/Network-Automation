@@ -1,0 +1,17 @@
+---
+- name: Test Genie Parser
+  hosts: ios
+  gather_facts: false
+
+  tasks:
+    - name: Parse CDP
+      ansible.utils.cli_parse:
+        command: show cdp neighbors
+        parser:
+          name: ansible.netcommon.pyats
+          os: iosxe
+      register: cdp_result
+
+    - name: Display CDP
+      ansible.builtin.debug:
+        var: cdp_result.parsed

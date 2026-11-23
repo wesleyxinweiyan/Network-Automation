@@ -1,0 +1,79 @@
+- name: postcheck
+  hosts: ios
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../../var/ios_upgrade.yml"
+
+  tasks:
+
+    - name: Get running config after upgrade
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup"
+          filename: "{{ inventory_hostname }}_afterupgrade.cfg"
+
+    - name: Compare {{ inventory_hostname }} running config with Git Diff
+      ansible.builtin.command:
+        argv:
+          - git
+          - diff
+          - --no-index
+          - --
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_beforeupgrade.cfg"
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_afterupgrade.cfg"
+      delegate_to: localhost
+      register: runningconfig_diff
+      changed_when: false
+      failed_when: runningconfig_diff.rc not in [0, 1]
+
+    - name: Save Running Config comparison result
+      ansible.builtin.copy:
+        content: "{{ runningconfig_diff.stdout }}\n"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_runningconfig.diff"
+        mode: '0644'
+      delegate_to: localhost
+
+    - name: Collect network state after upgrade
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/cisco_state_collection.yml"
+
+    - name: Save all network state as JSON
+      ansible.builtin.copy:
+        content: "{{ network_state | to_nice_json }}"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_afterupgrade_state.json"
+        mode: '0600'
+      delegate_to: localhost
+
+
+  ### Check network states using deep diff.
+    - name: Compare network state with DeepDiff
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../../script/compare_json.py"
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_beforeupgrade_state.json"
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_afterupgrade_state.json"
+      delegate_to: localhost
+      register: network_diff
+      changed_when: false
+      failed_when: network_diff.rc not in [0, 1]
+
+    - name: Save DeepDiff result to JSON file
+      ansible.builtin.copy:
+        content: "{{ network_diff.stdout }}\n"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_network_state.diff.json"
+        mode: '0600'
+      delegate_to: localhost
+
+    - name: Display comparison result
+      ansible.builtin.debug:
+        msg:
+          - "Switch: {{ inventory_hostname }}"
+          - "Comparison status: {{ 'DIFFERENCES FOUND' if network_diff.rc == 1 else 'NO DIFFERENCES' }}"
+
+    - name: Display detected differences
+      ansible.builtin.debug:
+        msg: "{{ network_diff.stdout | from_json }}"
+      when: network_diff.rc == 1

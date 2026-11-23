@@ -1,0 +1,25 @@
+---
+- name: Collect network state
+  ansible.utils.cli_parse:
+    command: "{{ item.command }}"
+    parser:
+      name: ansible.netcommon.pyats
+  loop:
+    # - name: cdp
+    #   command: show cdp neighbors
+    # - name: lldp
+    #   command: show lldp neighbors
+    # - name: routing
+    #   command: show ip route
+    - name: mac
+      command: show mac address-table
+  register: network_result
+
+
+- name: Combine network state
+  ansible.builtin.set_fact:
+    network_state:
+      # cdp: "{{ network_result.results[0].parsed }}"
+      # lldp: "{{ network_result.results[1].parsed }}"
+      # routing: "{{ network_result.results[2].parsed }}"
+      mac_address_table: "{{ network_result.results[0].parsed }}"

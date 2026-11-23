@@ -1,0 +1,12 @@
+---
+- name: Run Precheck
+  ansible.builtin.import_playbook: 01_precheck.yml
+
+- name: Stage IOS-XE Image
+  ansible.builtin.import_playbook: 02_stage_image.yml
+
+- name: Install Cisco IOS-XE
+  ansible.builtin.import_playbook: 03_install.yml
+
+- name: Run Postcheck
+  ansible.builtin.import_playbook: 04_postcheck.yml

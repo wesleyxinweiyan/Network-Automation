@@ -1,0 +1,8 @@
+
+{
+  "ansible.python.interpreterPath": "/Users/wesley/AI-Ops/network-automatically/.venv/bin/python",
+  "ansible.ansible.path": "/Users/wesley/AI-Ops/network-automatically/.venv/bin/ansible",
+  "ansible.validation.enabled": true,
+  "ansible.validation.lint.enabled": true,
+  "ansible.validation.lint.path": "/Users/wesley/AI-Ops/network-automatically/.venv/bin/ansible-lint"
+}

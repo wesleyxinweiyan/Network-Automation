@@ -1,0 +1,143 @@
+- name: postcheck
+  hosts: ios
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../../var/ios_upgrade.yml"
+
+  tasks:
+  ### The below tasks collect runningconfig and network metrics before restart
+    - name: Get running config
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: "{{ playbook_dir }}/../../backup/{{inventory_hostname}}_backup"
+          filename: "{{inventory_hostname}}_before.cfg"
+
+    - name: Collect network metrics
+      ansible.utils.cli_parse:
+        command: "{{ item.command }}"
+        parser:
+          name: ansible.netcommon.pyats
+      loop:
+        - name: isis
+          command: show isis neighbors
+        # - name: lldp
+        #   command: show lldp neighbors
+        - name: routing
+          command: show ip route
+        - name: mac
+          command: show mac address-table
+      register: network_result
+
+    - name: Combine network metrics
+      ansible.builtin.set_fact:
+        network_state:
+          isis: "{{ network_result.results[0].parsed }}"
+          # lldp: "{{ network_result.results[1].parsed }}"
+          routing: "{{ network_result.results[1].parsed }}"
+          mac_address_table: "{{ network_result.results[2].parsed }}"
+    
+    - name: Save all network metrics as a json file
+      ansible.builtin.copy:
+        content: "{{ network_state | to_nice_json }}"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_before.json"
+        mode: '0600'
+      delegate_to: localhost
+
+
+  ### The below tasks collect runningconfig and netowrk metrics after restart
+    - name: Get running config after restart
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: "{{ playbook_dir }}/../../backup/{{inventory_hostname}}_backup"
+          filename: "{{inventory_hostname}}_after.cfg"
+
+    - name: Collect network metrics
+      ansible.utils.cli_parse:
+        command: "{{ item.command }}"
+        parser:
+          name: ansible.netcommon.pyats
+      loop:
+        - name: isis
+          command: show isis neighbors
+        # - name: lldp
+        #   command: show lldp neighbors
+        - name: routing
+          command: show ip route
+        - name: mac
+          command: show mac address-table
+      register: network_result
+
+    - name: Combine network metrics
+      ansible.builtin.set_fact:
+        network_state:
+          isis: "{{ network_result.results[0].parsed }}"
+          # lldp: "{{ network_result.results[1].parsed }}"
+          routing: "{{ network_result.results[1].parsed }}"
+          mac_address_table: "{{ network_result.results[2].parsed }}"
+    
+    - name: Save all network metrics as a json file
+      ansible.builtin.copy:
+        content: "{{ network_state | to_nice_json }}"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_after.json"
+        mode: '0600'
+      delegate_to: localhost
+
+  
+  ### The below tasks will compare the restarted configuration and network metrics with before
+
+      ###comparing runningconfig use Git Diff
+    - name: Compare {{ inventory_hostname }} running config with Git Diff
+      ansible.builtin.command:
+        argv:
+          - git
+          - diff
+          - --no-index
+          - --
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_before.cfg"
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_after.cfg"
+      delegate_to: localhost
+      register: runningconfig_diff
+      changed_when: false
+      failed_when: runningconfig_diff.rc not in [0, 1]
+
+    - name: Save Running Config comparison result
+      ansible.builtin.copy:
+        content: "{{ runningconfig_diff.stdout }}\n"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_runningconfig.diff"
+        mode: '0644'
+      delegate_to: localhost
+
+
+      ###comparing network metrics use Deep Diff
+    - name: Compare network state with DeepDiff
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../../script/compare_json.py"
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_before.json"
+          - "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_after.json"
+      delegate_to: localhost
+      register: network_diff
+      changed_when: false
+      failed_when: network_diff.rc not in [0, 1]
+
+    - name: Save DeepDiff result to JSON file
+      ansible.builtin.copy:
+        content: "{{ network_diff.stdout }}\n"
+        dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_network_state.diff.json"
+        mode: '0600'
+      delegate_to: localhost
+
+    - name: Display comparison result
+      ansible.builtin.debug:
+        msg:
+          - "Switch: {{ inventory_hostname }}"
+          - "Comparison status: {{ 'DIFFERENCES FOUND' if network_diff.rc == 1 else 'NO DIFFERENCES' }}"
+
+    - name: Display detected differences
+      ansible.builtin.debug:
+        msg: "{{ network_diff.stdout | from_json }}"
+      when: network_diff.rc == 1

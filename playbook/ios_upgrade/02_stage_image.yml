@@ -1,0 +1,48 @@
+- name: Upload image before upgrade
+  hosts: ios
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../../var/ios_upgrade.yml"
+
+  tasks:
+
+    # check whether the swtich has the image.
+    - name: Collecting {{ inventory_hostname }} bootflash
+      ansible.netcommon.cli_command:
+        command: " dir {{ flash_dir }}"
+      register: dir_content
+      no_log: true
+
+    - name: Compare {{ inventory_hostname }} current image with target image
+      ansible.builtin.set_fact:
+        image_exists: "{{ target_image in dir_content.stdout[0] }}"
+   
+    ## upload new image to switch
+    - name: Copy image to {{ inventory_hostname }}
+      ansible.netcommon.cli_command:
+        command: "{{ upload_image_command }}"
+        prompt:
+          - "Destination filename"
+        answer:
+          - "\r"
+      vars:
+        ansible_command_timeout: 1800
+      register: copy_result
+      when: not image_exists
+
+    ## verification md5 in cisco ios-xe
+    - name: Get image md5 for {{ inventory_hostname }}
+      ansible.netcommon.cli_command:
+        command: "{{ md5_verify_command }}"
+      vars:
+        ansible_command_timeout: 600
+      register: verified_md5
+      no_log: true
+
+    - name: Check image MD5 for {{ inventory_hostname }}
+      ansible.builtin.assert:
+        that:
+          - target_image_md5 in (verified_md5.stdout)
+        success_msg: "MD5 verification successful."
+        fail_msg: "MD5 verification failed. Please check the image file."

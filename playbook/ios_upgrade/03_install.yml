@@ -1,0 +1,70 @@
+- name: install switch image
+  hosts: ios
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../../var/ios_upgrade.yml"
+  
+  tasks:
+    - name: install image
+      block:
+
+        - name: Set boot system for {{ inventory_hostname }}
+          cisco.ios.ios_config:
+            lines: 
+              - "no boot system"
+              - "boot system flash:packages.conf"
+              - "no boot manual"
+            save_when: changed
+          register: boot_result
+
+        - name: "{{ inventory_hostname }} is reloading"
+          ansible.netcommon.cli_command:
+            command: "install add file flash:{{ target_image }} activate commit"
+            prompt:
+              - "Do you want to proceed?"
+            answer:
+              - "y"
+          register: install_output
+          vars:
+            ansible_command_timeout: 1800 
+            
+        - name: Waiting for {{ inventory_hostname }} to come back
+          ansible.builtin.wait_for_connection:
+            delay: 60
+            sleep: 30
+            timeout: 900
+      rescue:
+        - name: Display failed task
+          ansible.builtin.debug:
+            msg: "Failed Task: {{ ansible_failed_task.name }}"
+
+        - name: Display failure reason
+          ansible.builtin.debug:
+            msg: "{{ ansible_failed_result.msg | default('Unknown error') }}"
+        
+        - name: Stop upgrade workflow
+          ansible.builtin.fail:
+            msg: "Upgrade failed on {{ inventory_hostname }}"
+      
+      always:
+        - name: Display install output
+          ansible.builtin.debug:
+            var: install_output.stdout_lines
+
+    - name: Grathering fact for {{ inventory_hostname }} after upgrade
+      cisco.ios.ios_facts:
+
+    - name: Check {{ inventory_hostname }} current verison
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} current version is {{ ansible_net_version }}"
+
+    - name: Check if the version is upgraded successfully for {{ inventory_hostname }}
+      ansible.builtin.assert:
+        that:
+          - ansible_net_version == target_ios_ver
+        success_msg: "{{ inventory_hostname }} has been upgraded to {{ target_ios_ver }}."
+        fail_msg: "{{ inventory_hostname }} upgrade failed."
+
+### Checking the running configuration and network status after a successful upgrade.
+# Do you want to remove the above files

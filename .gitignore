@@ -1,0 +1,24 @@
+# Python virtual environment
+.venv/
+
+# Network configuration backups
+backup/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Ansible logs
+*.log
+*.retry
+
+# Sensitive variables
+var/ios_upgrade.yml
+
+# Environment variables and private keys
+.env
+*.pem
+*.key
+
+# macOS
+.DS_Store
