@@ -1,3 +1,13 @@
+---
+# This playbook is used to compare the running configuration and network state of Cisco IOS-XE switches before and after a restart or reload to identify any changes.
+
+# **Before restarting the switch (Precheck):**
+# ansible-playbook -i inventory.ini playbook/configration_compare/cisco_iosxe_restart.yml --tags precheck
+# 
+# **After the switch has restarted (Postcheck):**
+# ansible-playbook -i inventory.ini playbook/configration_compare/cisco_iosxe_restart.yml --tags postcheck
+# 
+
 - name: postcheck
   hosts: ios
   gather_facts: false
@@ -7,7 +17,9 @@
 
   tasks:
   ### The below tasks collect runningconfig and network metrics before restart
+  
     - name: Get running config
+      tags: precheck
       cisco.ios.ios_config:
         backup: true
         backup_options:
@@ -15,6 +27,7 @@
           filename: "{{inventory_hostname}}_before.cfg"
 
     - name: Collect network metrics
+      tags: precheck
       ansible.utils.cli_parse:
         command: "{{ item.command }}"
         parser:
@@ -31,6 +44,7 @@
       register: network_result
 
     - name: Combine network metrics
+      tags: precheck
       ansible.builtin.set_fact:
         network_state:
           isis: "{{ network_result.results[0].parsed }}"
@@ -39,6 +53,7 @@
           mac_address_table: "{{ network_result.results[2].parsed }}"
     
     - name: Save all network metrics as a json file
+      tags: precheck
       ansible.builtin.copy:
         content: "{{ network_state | to_nice_json }}"
         dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_before.json"
@@ -48,6 +63,7 @@
 
   ### The below tasks collect runningconfig and netowrk metrics after restart
     - name: Get running config after restart
+      tags: postcheck
       cisco.ios.ios_config:
         backup: true
         backup_options:
@@ -55,6 +71,7 @@
           filename: "{{inventory_hostname}}_after.cfg"
 
     - name: Collect network metrics
+      tags: postcheck
       ansible.utils.cli_parse:
         command: "{{ item.command }}"
         parser:
@@ -71,6 +88,7 @@
       register: network_result
 
     - name: Combine network metrics
+      tags: postcheck
       ansible.builtin.set_fact:
         network_state:
           isis: "{{ network_result.results[0].parsed }}"
@@ -79,6 +97,7 @@
           mac_address_table: "{{ network_result.results[2].parsed }}"
     
     - name: Save all network metrics as a json file
+      tags: postcheck
       ansible.builtin.copy:
         content: "{{ network_state | to_nice_json }}"
         dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_after.json"
@@ -90,6 +109,7 @@
 
       ###comparing runningconfig use Git Diff
     - name: Compare {{ inventory_hostname }} running config with Git Diff
+      tags: postcheck
       ansible.builtin.command:
         argv:
           - git
@@ -104,15 +124,17 @@
       failed_when: runningconfig_diff.rc not in [0, 1]
 
     - name: Save Running Config comparison result
+      tags: postcheck
       ansible.builtin.copy:
         content: "{{ runningconfig_diff.stdout }}\n"
         dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_runningconfig.diff"
-        mode: '0644'
+        mode: '0600'
       delegate_to: localhost
 
 
       ###comparing network metrics use Deep Diff
     - name: Compare network state with DeepDiff
+      tags: postcheck
       ansible.builtin.command:
         argv:
           - "{{ ansible_playbook_python }}"
@@ -125,6 +147,7 @@
       failed_when: network_diff.rc not in [0, 1]
 
     - name: Save DeepDiff result to JSON file
+      tags: postcheck
       ansible.builtin.copy:
         content: "{{ network_diff.stdout }}\n"
         dest: "{{ playbook_dir }}/../../backup/{{ inventory_hostname }}_backup/{{ inventory_hostname }}_network_state.diff.json"
@@ -132,12 +155,14 @@
       delegate_to: localhost
 
     - name: Display comparison result
+      tags: postcheck
       ansible.builtin.debug:
         msg:
           - "Switch: {{ inventory_hostname }}"
           - "Comparison status: {{ 'DIFFERENCES FOUND' if network_diff.rc == 1 else 'NO DIFFERENCES' }}"
 
     - name: Display detected differences
+      tags: postcheck
       ansible.builtin.debug:
         msg: "{{ network_diff.stdout | from_json }}"
       when: network_diff.rc == 1

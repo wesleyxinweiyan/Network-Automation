@@ -41,7 +41,7 @@ Network-Automation/
 │       └── cisco_iosxe_restart.yml
 │
 ├── script/
-│   └── compare.py
+│   └── compare_json.py
 │
 ├── var/
 │   └── ios_upgrade.yml
