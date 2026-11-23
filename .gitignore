@@ -12,8 +12,6 @@ __pycache__/
 *.log
 *.retry
 
-# Sensitive variables
-var/ios_upgrade.yml
 
 # Environment variables and private keys
 .env

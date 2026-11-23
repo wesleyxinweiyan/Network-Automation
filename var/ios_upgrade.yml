@@ -1,0 +1,10 @@
+### this file defined some variables that used for Cisco Catalyst Swtiches Software Upgrade
+    flash_dir: 'bootflash:' 
+    target_ios_ver: "17.12.08"
+    target_image: cat9k_lite_iosxe.17.12.08.SPA.bin
+    target_image_md5: 63e0a01714ae325cd32b2f3d2f99ca8e
+    target_image_size: 471177027
+    ### verify md5 command in Cisco ios-xe
+    md5_verify_command: "verify /md5 bootflash:cat9k_lite_iosxe.17.12.08.SPA.bin"
+    ### upload image command in Cisco ios-xe
+    upload_image_command: "copy usbflash0:cat9k_lite_iosxe.17.12.08.SPA.bin bootflash:"
