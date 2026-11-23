@@ -23,3 +23,6 @@ var/ios_upgrade.yml
 # macOS
 .DS_Store
 inventory.ini
+
+# VS Code settings
+.vscode/
